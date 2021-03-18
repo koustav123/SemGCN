@@ -1,5 +1,6 @@
 from __future__ import print_function, absolute_import, division
-
+import pdb
+# pdb.set_trace()
 import os
 import time
 import datetime
@@ -20,6 +21,7 @@ from common.data_utils import fetch, read_3d_data, create_2d_data
 from common.generators import PoseGenerator
 from common.loss import mpjpe, p_mpjpe
 from models.sem_gcn import SemGCN
+
 
 
 def parse_args():

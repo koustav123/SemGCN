@@ -1,5 +1,6 @@
 # Dataset setup
 
+
 ## Human3.6M
 We provide two ways to set up the Human3.6M dataset on our pipeline. You can either use the [dataset preprocessed by Martinez et al.](https://github.com/una-dinosauria/3d-pose-baseline) (fastest way) or convert the original dataset from scratch. The two methods produce the same result. After this step, you should end up with two files in the `data` directory: `data_3d_h36m.npz` for the 3D poses, and `data_2d_h36m_gt.npz` for the ground-truth 2D poses.
 

@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import torch.nn as nn
 from models.sem_graph_conv import SemGraphConv
 from models.graph_non_local import GraphNonLocal
+from functools import reduce
 
 
 class _GraphConv(nn.Module):
@@ -45,14 +46,13 @@ class _ResGraphConv(nn.Module):
 class _GraphNonLocal(nn.Module):
     def __init__(self, hid_dim, grouped_order, restored_order, group_size):
         super(_GraphNonLocal, self).__init__()
-
-        self.nonlocal = GraphNonLocal(hid_dim, sub_sample=group_size)
+        self.nl = GraphNonLocal(hid_dim, sub_sample=group_size)
         self.grouped_order = grouped_order
         self.restored_order = restored_order
 
     def forward(self, x):
         out = x[:, self.grouped_order, :]
-        out = self.nonlocal(out.transpose(1, 2)).transpose(1, 2)
+        out = self.nl(out.transpose(1, 2)).transpose(1, 2)
         out = out[:, self.restored_order, :]
         return out
 
@@ -71,7 +71,7 @@ class SemGCN(nn.Module):
             group_size = len(nodes_group[0])
             assert group_size > 1
 
-            grouped_order = list(reduce(lambda x, y: x + y, nodes_group))
+            grouped_order = [*reduce(lambda x, y: x + y, nodes_group)]
             restored_order = [0] * len(grouped_order)
             for i in range(len(restored_order)):
                 for j in range(len(grouped_order)):

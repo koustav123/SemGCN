@@ -4,6 +4,7 @@ import torch.nn as nn
 from models.sem_graph_conv import SemGraphConv
 from models.graph_non_local import GraphNonLocal
 from functools import reduce
+import pdb
 
 
 class _GraphConv(nn.Module):
@@ -89,6 +90,7 @@ class SemGCN(nn.Module):
         self.gconv_output = SemGraphConv(hid_dim, coords_dim[1], adj)
 
     def forward(self, x):
+        # pdb.set_trace()
         out = self.gconv_input(x)
         out = self.gconv_layers(out)
         out = self.gconv_output(out)

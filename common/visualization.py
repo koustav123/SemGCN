@@ -8,6 +8,7 @@ from matplotlib.animation import FuncAnimation, writers
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import subprocess as sp
+import pdb
 
 
 def get_resolution(filename):
@@ -76,7 +77,7 @@ def render_animation(keypoints, poses, skeleton, fps, bitrate, azim, output, vie
         ax.set_xlim3d([-radius / 2, radius / 2])
         ax.set_zlim3d([0, radius])
         ax.set_ylim3d([-radius / 2, radius / 2])
-        ax.set_aspect('equal')
+        # ax.set_aspect('equal')
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_zticklabels([])
@@ -177,6 +178,8 @@ def render_animation(keypoints, poses, skeleton, fps, bitrate, azim, output, vie
         writer = Writer(fps=fps, metadata={}, bitrate=bitrate)
         anim.save(output, writer=writer)
     elif output.endswith('.gif'):
+        # pdb.set_trace()
+        # anim.save(output, dpi=80)
         anim.save(output, dpi=80, writer='imagemagick')
     else:
         raise ValueError('Unsupported output format (only .mp4 and .gif are supported)')

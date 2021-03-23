@@ -33,7 +33,7 @@ class SemGraphConv(nn.Module):
             self.register_parameter('bias', None)
 
     def forward(self, input):
-        pdb.set_trace()
+        # pdb.set_trace()
         h0 = torch.matmul(input, self.W[0])
         h1 = torch.matmul(input, self.W[1])
 

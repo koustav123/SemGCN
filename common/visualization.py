@@ -171,7 +171,7 @@ def render_animation(keypoints, poses, skeleton, fps, bitrate, azim, output, vie
         print('{}/{}      '.format(i, limit), end='\r')
 
     fig.tight_layout()
-
+    # pdb.set_trace()
     anim = FuncAnimation(fig, update_video, frames=np.arange(0, limit), interval=1000 / fps, repeat=False)
     if output.endswith('.mp4'):
         Writer = writers['ffmpeg']

@@ -21,8 +21,13 @@ from common.data_utils import fetch, read_3d_data, create_2d_data
 from common.generators import PoseGenerator
 from common.loss import mpjpe, p_mpjpe
 from models.sem_gcn import SemGCN
+from torch.utils.tensorboard import SummaryWriter
 
 
+# comment = path.join('visuals',datetime.datetime.now().isoformat())
+# print("visuals: %s"%(comment))
+PILOT=10000000
+visualizer = SummaryWriter()
 
 def parse_args():
     parser = argparse.ArgumentParser(description='PyTorch training script')
@@ -70,6 +75,7 @@ def parse_args():
 
 
 def main(args):
+    global visualizer
     print('==> Using settings {}'.format(args))
 
     print('==> Loading dataset...')
@@ -108,6 +114,7 @@ def main(args):
 
     criterion = nn.MSELoss(reduction='mean').to(device)
     optimizer = torch.optim.Adam(model_pos.parameters(), lr=args.lr)
+
 
     # Optionally resume from a checkpoint
     if args.resume or args.evaluate:
@@ -177,10 +184,10 @@ def main(args):
         # Train for one epoch
         epoch_loss, lr_now, glob_step = train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
                                               glob_step, args.lr_decay, args.lr_gamma, max_norm=args.max_norm)
-
+        visualizer.add_scalars('Loss', { 'train' : epoch_loss}, epoch)
         # Evaluate
         error_eval_p1, error_eval_p2 = evaluate(valid_loader, model_pos, device)
-
+        visualizer.add_scalars('Loss', {'eval': error_eval_p1}, epoch)
         # Update log file
         logger.append([epoch + 1, lr_now, epoch_loss, error_eval_p1, error_eval_p2])
 
@@ -213,36 +220,39 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
 
     bar = Bar('Train', max=len(data_loader))
     for i, (targets_3d, inputs_2d, _) in enumerate(data_loader):
+        if i <= PILOT:
+            # continue
         # Measure data loading time
-        data_time.update(time.time() - end)
-        num_poses = targets_3d.size(0)
+            data_time.update(time.time() - end)
+            num_poses = targets_3d.size(0)
 
-        step += 1
-        if step % decay == 0 or step == 1:
-            lr_now = lr_decay(optimizer, step, lr_init, decay, gamma)
+            step += 1
+            if step % decay == 0 or step == 1:
+                lr_now = lr_decay(optimizer, step, lr_init, decay, gamma)
 
-        targets_3d, inputs_2d = targets_3d.to(device), inputs_2d.to(device)
-        outputs_3d = model_pos(inputs_2d)
+            targets_3d, inputs_2d = targets_3d.to(device), inputs_2d.to(device)
+            outputs_3d = model_pos(inputs_2d)
 
-        optimizer.zero_grad()
-        loss_3d_pos = criterion(outputs_3d, targets_3d)
-        loss_3d_pos.backward()
-        if max_norm:
-            nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
-        optimizer.step()
+            optimizer.zero_grad()
+            loss_3d_pos = criterion(outputs_3d, targets_3d)
+            loss_3d_pos.backward()
+            if max_norm:
+                nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
+            optimizer.step()
 
-        epoch_loss_3d_pos.update(loss_3d_pos.item(), num_poses)
+            epoch_loss_3d_pos.update(loss_3d_pos.item(), num_poses)
 
-        # Measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+            # Measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
-                     '| Loss: {loss: .4f}' \
-            .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
-                    ttl=bar.elapsed_td, eta=bar.eta_td, loss=epoch_loss_3d_pos.avg)
-        bar.next()
-
+            bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
+                         '| Loss: {loss: .4f}' \
+                .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
+                        ttl=bar.elapsed_td, eta=bar.eta_td, loss=epoch_loss_3d_pos.avg)
+            bar.next()
+        else:
+            break
     bar.finish()
     return epoch_loss_3d_pos.avg, lr_now, step
 
@@ -261,29 +271,32 @@ def evaluate(data_loader, model_pos, device):
     bar = Bar('Eval ', max=len(data_loader))
     for i, (targets_3d, inputs_2d, _) in enumerate(data_loader):
         # Measure data loading time
-        data_time.update(time.time() - end)
-        num_poses = targets_3d.size(0)
+        if i <= PILOT:
+            data_time.update(time.time() - end)
+            num_poses = targets_3d.size(0)
 
-        inputs_2d = inputs_2d.to(device)
-        outputs_3d = model_pos(inputs_2d).cpu()
-        outputs_3d[:, :, :] -= outputs_3d[:, :1, :]  # Zero-centre the root (hip)
+            inputs_2d = inputs_2d.to(device)
+            outputs_3d = model_pos(inputs_2d).cpu()
+            outputs_3d[:, :, :] -= outputs_3d[:, :1, :]  # Zero-centre the root (hip)
 
-        epoch_loss_3d_pos.update(mpjpe(outputs_3d, targets_3d).item() * 1000.0, num_poses)
-        epoch_loss_3d_pos_procrustes.update(p_mpjpe(outputs_3d.numpy(), targets_3d.numpy()).item() * 1000.0, num_poses)
+            epoch_loss_3d_pos.update(mpjpe(outputs_3d, targets_3d).item() * 1000.0, num_poses)
+            epoch_loss_3d_pos_procrustes.update(p_mpjpe(outputs_3d.numpy(), targets_3d.numpy()).item() * 1000.0, num_poses)
 
-        # Measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+            # Measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
-                     '| MPJPE: {e1: .4f} | P-MPJPE: {e2: .4f}' \
-            .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
-                    ttl=bar.elapsed_td, eta=bar.eta_td, e1=epoch_loss_3d_pos.avg, e2=epoch_loss_3d_pos_procrustes.avg)
-        bar.next()
-
+            bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
+                         '| MPJPE: {e1: .4f} | P-MPJPE: {e2: .4f}' \
+                .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
+                        ttl=bar.elapsed_td, eta=bar.eta_td, e1=epoch_loss_3d_pos.avg, e2=epoch_loss_3d_pos_procrustes.avg)
+            bar.next()
+        else:
+            break
     bar.finish()
     return epoch_loss_3d_pos.avg, epoch_loss_3d_pos_procrustes.avg
 
 
 if __name__ == '__main__':
     main(parse_args())
+    visualizer.close()

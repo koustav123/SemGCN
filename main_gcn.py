@@ -19,7 +19,7 @@ from common.utils import AverageMeter, lr_decay, save_ckpt
 from common.graph_utils import adj_mx_from_skeleton
 from common.data_utils import fetch, read_3d_data, create_2d_data
 from common.generators import PoseGenerator
-from common.loss import mpjpe, p_mpjpe
+from common.loss import mpjpe, p_mpjpe, MixedCycleLoss
 from models.sem_gcn import SemGCN
 from torch.utils.tensorboard import SummaryWriter
 
@@ -112,7 +112,8 @@ def main(args):
                        nodes_group=dataset.skeleton().joints_group() if args.non_local else None).to(device)
     print("==> Total parameters: {:.2f}M".format(sum(p.numel() for p in model_pos.parameters()) / 1000000.0))
 
-    criterion = nn.MSELoss(reduction='mean').to(device)
+    # criterion = nn.MSELoss(reduction='mean').to(device)
+    criterion = MixedCycleLoss(reduction='mean').to(device)
     optimizer = torch.optim.Adam(model_pos.parameters(), lr=args.lr)
 
 
@@ -182,14 +183,17 @@ def main(args):
         print('\nEpoch: %d | LR: %.8f' % (epoch + 1, lr_now))
 
         # Train for one epoch
-        epoch_loss, lr_now, glob_step = train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
-                                              glob_step, args.lr_decay, args.lr_gamma, max_norm=args.max_norm)
-        visualizer.add_scalars('Loss', { 'train' : epoch_loss}, epoch)
+        epoch_loss_3d, epoch_loss_cycle, epoch_loss_mixed, lr_now, glob_step = \
+            train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
+                        glob_step, args.lr_decay, args.lr_gamma, max_norm=args.max_norm)
+        visualizer.add_scalars('Train', { 'mixed' : epoch_loss_mixed}, epoch)
+        visualizer.add_scalars('Train', {'cycle': epoch_loss_cycle}, epoch)
+        visualizer.add_scalars('Train', {'3d': epoch_loss_3d}, epoch)
         # Evaluate
         error_eval_p1, error_eval_p2 = evaluate(valid_loader, model_pos, device)
-        visualizer.add_scalars('Loss', {'eval': error_eval_p1}, epoch)
+        visualizer.add_scalars('Eval', {'P1': error_eval_p1}, epoch)
         # Update log file
-        logger.append([epoch + 1, lr_now, epoch_loss, error_eval_p1, error_eval_p2])
+        logger.append([epoch + 1, lr_now, epoch_loss_mixed, error_eval_p1, error_eval_p2])
 
         # Save checkpoint
         if error_best is None or error_best > error_eval_p1:
@@ -212,6 +216,8 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
     batch_time = AverageMeter()
     data_time = AverageMeter()
     epoch_loss_3d_pos = AverageMeter()
+    epoch_loss_2d_cycle = AverageMeter()
+    epoch_loss_mixed = AverageMeter()
 
     # Switch to train mode
     torch.set_grad_enabled(True)
@@ -231,16 +237,22 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
                 lr_now = lr_decay(optimizer, step, lr_init, decay, gamma)
 
             targets_3d, inputs_2d = targets_3d.to(device), inputs_2d.to(device)
-            outputs_3d = model_pos(inputs_2d)
+            outputs_2d, outputs_3d = model_pos(inputs_2d)
+            # pdb.set_trace()
 
             optimizer.zero_grad()
-            loss_3d_pos = criterion(outputs_3d, targets_3d)
-            loss_3d_pos.backward()
+
+            # loss_3d_pos = criterion(outputs_3d, targets_3d)
+            # loss_3d_pos.backward()
+            mixed_loss, loss_2d_pos, loss_3d_pos = criterion(outputs_2d, outputs_3d, inputs_2d, targets_3d)
+            mixed_loss.backward()
             if max_norm:
                 nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
             optimizer.step()
 
             epoch_loss_3d_pos.update(loss_3d_pos.item(), num_poses)
+            epoch_loss_2d_cycle.update(loss_2d_pos.item(), num_poses)
+            epoch_loss_mixed.update(mixed_loss.item(), num_poses)
 
             # Measure elapsed time
             batch_time.update(time.time() - end)
@@ -254,13 +266,15 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
         else:
             break
     bar.finish()
-    return epoch_loss_3d_pos.avg, lr_now, step
+    return epoch_loss_3d_pos.avg, epoch_loss_2d_cycle.avg, epoch_loss_mixed.avg, lr_now, step
 
 
 def evaluate(data_loader, model_pos, device):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     epoch_loss_3d_pos = AverageMeter()
+    epoch_loss_2d_cycle = AverageMeter()
+    epoch_loss_mixed = AverageMeter()
     epoch_loss_3d_pos_procrustes = AverageMeter()
 
     # Switch to evaluate mode
@@ -276,7 +290,8 @@ def evaluate(data_loader, model_pos, device):
             num_poses = targets_3d.size(0)
 
             inputs_2d = inputs_2d.to(device)
-            outputs_3d = model_pos(inputs_2d).cpu()
+            outputs_2d, outputs_3d = model_pos(inputs_2d)
+            outputs_3d = outputs_3d.cpu()
             outputs_3d[:, :, :] -= outputs_3d[:, :1, :]  # Zero-centre the root (hip)
 
             epoch_loss_3d_pos.update(mpjpe(outputs_3d, targets_3d).item() * 1000.0, num_poses)

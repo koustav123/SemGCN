@@ -2,6 +2,8 @@ from __future__ import absolute_import, division
 
 import torch
 import numpy as np
+from torch import nn
+import torch.nn.functional as F
 
 
 def mpjpe(predicted, target):
@@ -87,3 +89,17 @@ def mean_velocity_error(predicted, target):
     velocity_target = np.diff(target, axis=0)
 
     return np.mean(np.linalg.norm(velocity_predicted - velocity_target, axis=len(target.shape) - 1))
+
+
+class MixedCycleLoss(nn.Module):
+
+    def __init__(self, reduction: str = 'none') -> None:
+        super(MixedCycleLoss, self).__init__()
+        self.reduction = reduction
+
+    def forward(self, input_2d, input_3d, target_2d, target_3d):
+        # pdb.set_trace()
+        loss_cycle = F.mse_loss(input_2d, target_2d, reduction=self.reduction)
+        loss_3d = F.mse_loss(input_3d, target_3d, reduction=self.reduction)
+        mixed_loss = loss_cycle + loss_3d
+        return mixed_loss, loss_cycle, loss_3d

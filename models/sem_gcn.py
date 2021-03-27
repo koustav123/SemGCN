@@ -88,6 +88,49 @@ class SemGCN(nn.Module):
         self.gconv_input = nn.Sequential(*_gconv_input)
         self.gconv_layers = nn.Sequential(*_gconv_layers)
         self.gconv_output = SemGraphConv(hid_dim, coords_dim[1], adj)
+        self.inverse_net = SemGCNInv(adj, hid_dim, coords_dim=(3, 2), num_layers=4, nodes_group=None, p_dropout=None)
+        # pdb.set_trace()
+
+    def forward(self, x):
+        # pdb.set_trace()
+        out = self.gconv_input(x)
+        out = self.gconv_layers(out)
+        out_3d = self.gconv_output(out)
+        out_2d = self.inverse_net(out_3d)
+        return out_2d, out_3d
+
+
+class SemGCNInv(nn.Module):
+    def __init__(self, adj, hid_dim, coords_dim=(2, 3), num_layers=4, nodes_group=None, p_dropout=None):
+        super(SemGCNInv, self).__init__()
+
+        _gconv_input = [_GraphConv(adj, coords_dim[0], hid_dim, p_dropout=p_dropout)]
+        _gconv_layers = []
+
+        if nodes_group is None:
+            for i in range(num_layers):
+                _gconv_layers.append(_ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout))
+        else:
+            group_size = len(nodes_group[0])
+            assert group_size > 1
+
+            grouped_order = [*reduce(lambda x, y: x + y, nodes_group)]
+            restored_order = [0] * len(grouped_order)
+            for i in range(len(restored_order)):
+                for j in range(len(grouped_order)):
+                    if grouped_order[j] == i:
+                        restored_order[i] = j
+                        break
+
+            _gconv_input.append(_GraphNonLocal(hid_dim, grouped_order, restored_order, group_size))
+            for i in range(num_layers):
+                _gconv_layers.append(_ResGraphConv(adj, hid_dim, hid_dim, hid_dim, p_dropout=p_dropout))
+                _gconv_layers.append(_GraphNonLocal(hid_dim, grouped_order, restored_order, group_size))
+
+        self.gconv_input = nn.Sequential(*_gconv_input)
+        self.gconv_layers = nn.Sequential(*_gconv_layers)
+        self.gconv_output = SemGraphConv(hid_dim, coords_dim[1], adj)
+        # pdb.set_trace()
 
     def forward(self, x):
         # pdb.set_trace()

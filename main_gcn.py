@@ -20,19 +20,20 @@ from common.graph_utils import adj_mx_from_skeleton
 from common.data_utils import fetch, read_3d_data, create_2d_data
 from common.generators import PoseGenerator
 from common.loss import mpjpe, p_mpjpe, MixedCycleLoss
-from models.sem_gcn import SemGCN
+from models.sem_gcn import SemGCN, SemGCNBiDir
 from torch.utils.tensorboard import SummaryWriter
 
 
 # comment = path.join('visuals',datetime.datetime.now().isoformat())
 # print("visuals: %s"%(comment))
 PILOT=10000000
-visualizer = SummaryWriter()
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='PyTorch training script')
 
     # General arguments
+    parser.add_argument('-id', '--id', default='TEST', type=str, metavar='NAME', help='experiment ID for ')
     parser.add_argument('-d', '--dataset', default='h36m', type=str, metavar='NAME', help='target dataset')
     parser.add_argument('-k', '--keypoints', default='gt', type=str, metavar='NAME', help='2D detections to use')
     parser.add_argument('-a', '--actions', default='*', type=str, metavar='LIST',
@@ -73,9 +74,8 @@ def parse_args():
 
     return args
 
-
 def main(args):
-    global visualizer
+    visualizer = SummaryWriter(log_dir='runs/'+args.id+'_'+datetime.datetime.now().isoformat())
     print('==> Using settings {}'.format(args))
 
     print('==> Loading dataset...')
@@ -108,7 +108,7 @@ def main(args):
 
     p_dropout = (None if args.dropout == 0.0 else args.dropout)
     adj = adj_mx_from_skeleton(dataset.skeleton())
-    model_pos = SemGCN(adj, args.hid_dim, num_layers=args.num_layers, p_dropout=p_dropout,
+    model_pos = SemGCNBiDir(adj, args.hid_dim, num_layers=args.num_layers, p_dropout=p_dropout,
                        nodes_group=dataset.skeleton().joints_group() if args.non_local else None).to(device)
     print("==> Total parameters: {:.2f}M".format(sum(p.numel() for p in model_pos.parameters()) / 1000000.0))
 
@@ -208,7 +208,7 @@ def main(args):
     logger.close()
     logger.plot(['loss_train', 'error_eval_p1'])
     savefig(path.join(ckpt_dir_path, 'log.eps'))
-
+    visualizer.close()
     return
 
 
@@ -244,7 +244,7 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
 
             # loss_3d_pos = criterion(outputs_3d, targets_3d)
             # loss_3d_pos.backward()
-            mixed_loss, loss_2d_pos, loss_3d_pos = criterion(outputs_2d, outputs_3d, inputs_2d, targets_3d)
+            mixed_loss, loss_2d_pos, loss_3d_pos = criterion(outputs_2d, outputs_3d, inputs_2d, targets_3d, w_cycle = 1)
             mixed_loss.backward()
             if max_norm:
                 nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
@@ -314,4 +314,3 @@ def evaluate(data_loader, model_pos, device):
 
 if __name__ == '__main__':
     main(parse_args())
-    visualizer.close()

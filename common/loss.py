@@ -97,9 +97,9 @@ class MixedCycleLoss(nn.Module):
         super(MixedCycleLoss, self).__init__()
         self.reduction = reduction
 
-    def forward(self, input_2d, input_3d, target_2d, target_3d):
+    def forward(self, input_2d, input_3d, target_2d, target_3d, w_cycle = 1, w_3d = 1):
         # pdb.set_trace()
         loss_cycle = F.mse_loss(input_2d, target_2d, reduction=self.reduction)
         loss_3d = F.mse_loss(input_3d, target_3d, reduction=self.reduction)
-        mixed_loss = loss_cycle + loss_3d
+        mixed_loss = w_cycle * loss_cycle + w_3d * loss_3d
         return mixed_loss, loss_cycle, loss_3d

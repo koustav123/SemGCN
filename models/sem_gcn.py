@@ -174,4 +174,4 @@ class SemGCN(nn.Module):
         out = self.gconv_input(x)
         out = self.gconv_layers(out)
         out = self.gconv_output(out)
-        return out
+        return x, out

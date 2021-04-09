@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 
 from progress.bar import Bar
 from common.log import Logger, savefig
-from common.utils import AverageMeter, lr_decay, save_ckpt
+from common.utils import AverageMeter, lr_decay, save_ckpt, model_load_2_3
 from common.graph_utils import adj_mx_from_skeleton
 from common.data_utils import fetch, read_3d_data, create_2d_data
 from common.generators import PoseGenerator
@@ -108,7 +108,7 @@ def main(args):
 
     p_dropout = (None if args.dropout == 0.0 else args.dropout)
     adj = adj_mx_from_skeleton(dataset.skeleton())
-    model_pos = SemGCNBiDir(adj, args.hid_dim, num_layers=args.num_layers, p_dropout=p_dropout,
+    model_pos = SemGCN(adj, args.hid_dim, num_layers=args.num_layers, p_dropout=p_dropout,
                        nodes_group=dataset.skeleton().joints_group() if args.non_local else None).to(device)
     print("==> Total parameters: {:.2f}M".format(sum(p.numel() for p in model_pos.parameters()) / 1000000.0))
 
@@ -128,7 +128,8 @@ def main(args):
             error_best = ckpt['error']
             glob_step = ckpt['step']
             lr_now = ckpt['lr']
-            model_pos.load_state_dict(ckpt['state_dict'])
+            # pdb.set_trace()
+            model_pos = model_load_2_3(model_pos, ckpt['state_dict'])
             optimizer.load_state_dict(ckpt['optimizer'])
             print("==> Loaded checkpoint (Epoch: {} | Error: {})".format(start_epoch, error_best))
 

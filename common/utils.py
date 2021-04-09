@@ -3,6 +3,7 @@ from __future__ import absolute_import, division
 import os
 import torch
 import numpy as np
+import pdb
 
 
 class AverageMeter(object):
@@ -69,3 +70,13 @@ def wrap(func, unsqueeze, *args):
         return result.numpy()
     else:
         return result
+
+
+def model_load_2_3(model, weights):
+    # pdb.set_trace()
+    weight_keys, weight_values = weights.keys(), weights.values()
+    new_weight_keys = [*map(lambda x: x.replace('nonlocal', 'nl'), [*weight_keys])]
+    weights = dict(zip(new_weight_keys, weight_values))
+    model.load_state_dict(weights)
+    return model
+    # uk = filter(lambda x: 'num_batches_tracked' not in x, uk)

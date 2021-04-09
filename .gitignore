@@ -6,3 +6,4 @@ checkpoint/
 runs/
 runs/*
 .idea/*
+*.zip
